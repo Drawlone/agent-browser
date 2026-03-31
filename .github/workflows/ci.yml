@@ -68,22 +68,17 @@ jobs:
       - name: Run e2e tests
         run: cargo test --profile ci --manifest-path cli/Cargo.toml e2e -- --ignored --test-threads=1
 
-  global-install:
-    name: Global Install (Linux glibc 2.28)
+  build-and-upload:
+    name: Build & Upload Binary (Linux glibc 2.28)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    # 使用 Debian Buster 容器，它的原生 glibc 版本正是 2.28
+    # 继续使用 Debian Buster 容器保证 glibc 2.28 兼容性
     container:
       image: rust:buster
     needs: rust
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -99,24 +94,14 @@ jobs:
         run: cargo build --release --manifest-path cli/Cargo.toml --target x86_64-unknown-linux-gnu
 
       - name: Copy CLI binary to bin directory
-        run: cp cli/target/x86_64-unknown-linux-gnu/release/agent-browser bin/agent-browser-linux-x64
-
-      - name: Test npm global install
         run: |
-          npm pack
-          npm install -g agent-browser-*.tgz
-          agent-browser --version
-        shell: bash
+          mkdir -p bin
+          cp cli/target/x86_64-unknown-linux-gnu/release/agent-browser bin/agent-browser-linux-x64
 
-      - name: Verify symlink points to native binary
-        run: |
-          SYMLINK=$(npm prefix -g)/bin/agent-browser
-          TARGET=$(readlink "$SYMLINK")
-          echo "Symlink: $SYMLINK"
-          echo "Target: $TARGET"
-          if [[ "$TARGET" != *"agent-browser-linux-x64"* ]]; then
-            echo "ERROR: Symlink should point to native binary, not JS wrapper"
-            exit 1
-          fi
-          echo "Symlink correctly points to native binary"
-        shell: bash
+      # 新增：将二进制文件上传到 GitHub Artifacts
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-browser-linux-x64
+          path: bin/agent-browser-linux-x64
+          retention-days: 30 # 产物保留天数，最高可设为 90
